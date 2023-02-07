@@ -1,0 +1,74 @@
+<html>
+
+
+{% block content %}
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <head>
+        <script type= "text/javascript">
+            var frame_number = "{{ Number }}"
+            var prev_canv = JSON.parse('{{ prev_canv | tojson }}')
+            var prev_unsure = "{{ prev_check_unsure }}"
+            var prev_click = "{{ prev_ck }}"
+            var prev_bad_frame = "{{ prev_check_bad_frame }}"
+        </script>
+        <script type="text/javascript" href="{{ url_for('static', filename='script.js') }}"></script>
+            
+    
+    
+    </head>
+    <title>Anotator</title>
+    <body onload="load()">
+        <h1>Annotation Tool</h1>
+        
+        <p> Frame number:  {{ Number }}/ {{Totalframes}} </p>
+        <p align="left"><button class=grey style="height:75px;width:150px" onclick="prev_click_but()">previous frame</button>
+       
+                <button class=grey style="height:75px;width:150px" onclick="next_click_but()">next frame</button>
+
+        </p>
+        <p>
+            <button class=grey style="height:30px;width:150px" onclick="save_exit()">Save & Exit</button>
+            <button class=grey style="height:30px;width:150px" onclick="prev_mark_click()">Prev marking</button>
+            <input type="checkbox" id="unsure" name="unsure" value="1"/>
+            <label for="unsure"> unsure marking</label>
+            <input type="checkbox" id="bad_frame" name="bad_frame" value="1"/>
+            <label for="bad_frame">bad frame</label>
+            <br> 
+        </p>
+        <p><table>
+            <tr>
+            <td>
+                <fieldset id="toolset">
+                <br>
+                <br>
+                <button id="hcc" type="button" style="height: 25px; width: 100px;" onclick="hcc_mark()">hcc</button>
+                <br>
+                <br>
+                <br>
+                <button id="ccc" type="button" style="height: 25px; width: 100px;" onclick="ccc_mark()">ccc</button>
+                <br>
+                <br>
+                <br>
+                <button id="erasertool" type="button" style="height: 25px; width: 100px;" onclick="eraser()">Eraser</button> 
+                <br>
+                <br>
+                <br>
+                <button id="resettool" type="button" style="height: 25px; width: 100px;" onclick="reset()">Reset</button> 
+                </fieldset>
+            </td>
+            <td>
+                <div>
+                   <!-- <img src="{{ url_for('frame') }}" style="transform: translateX(130px) translateY(-52px)"> -->
+                   <img id= "frame_im" src="{{ url_for('frame') }}" >
+                </div>
+                <canvas id="paint" width="896" height="720" style="border: 0px solid #000000;"></canvas>
+ 
+            </td>
+            </tr>
+        </table></p>
+            
+            <!-- <script src="http://code.jquery.com/jquery-1.8.3.js"></script> -->
+            <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+            <script src=" {{ url_for('static', filename='script.js') }}"></script>
+{% endblock %}
+</html>

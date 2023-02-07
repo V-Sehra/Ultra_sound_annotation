@@ -1,0 +1,40 @@
+<html>
+
+
+{% block content %}
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <head>
+        <script type="text/javascript" href="{{ url_for('static', filename='script_crop.js') }}"></script>
+            
+    
+    
+    </head>
+    <title>Correct Crop</title>
+    <body>
+       <h1>Is the cropping good on this frame?</h1>
+        
+        
+        <p align="left"><button class=grey style="height:75px;width:150px" onclick="correct_crop_click()">good Cropping</button>
+       
+                <button class=grey style="height:75px;width:150px" onclick="next_crop_click()">Next test cropping</button>
+
+        </p> 
+
+        <p><table>
+            <tr>
+
+            <td>
+                <div>
+                   <img id= "frame_im" src="{{ url_for('frame') }}" >
+                </div>
+                
+ 
+            </td>
+            </tr>
+        </table></p>
+            
+            <!-- <script src="http://code.jquery.com/jquery-1.8.3.js"></script> -->
+            <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+            <script src=" {{ url_for('static', filename='script_crop.js') }}"></script>
+{% endblock %}
+</html>

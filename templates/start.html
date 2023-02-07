@@ -1,0 +1,30 @@
+
+<!DOCTYPE html>
+<html>
+
+<title>Upload a new Video</title>
+<h1>Please fill out all of the Form</h1>
+<script type="text/javascript" href="{{ url_for('static', filename='script_choose.js') }}"></script>
+<form action="" method="POST" enctype='multipart/form-data'>
+
+
+  <label for="p_id">Pation ID:</label><br>
+  <input type="text" name="p_id" value="{{request.form.p_id}}"><br>
+  
+  <label for="zz">Index:</label><br>
+  <input type="text" name="index" value="{{request.form.index}}"><br>
+  
+  <label for="angle">Anlge:</label><br>
+  <input type="text" name="angle" value="{{request.form.angle}}"><br>
+  
+  <input type="checkbox" id="pictograph" name="pictograph" value="1"/>
+  <label for="pictograph"> pictograph present?</label> <br><br>
+  
+  <label for="vid_file">Video file:</label><br>
+  <input type=file name=vid_file><br>
+  
+  <input type=submit value=Upload>
+</form>
+
+
+</html>
