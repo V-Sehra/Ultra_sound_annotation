@@ -11,5 +11,3 @@ This tool is completely GDPR compatible as all data will be stored locally, next
 
 Currently, the markings are based on determining HCC and CCC cancerous tissue, but can easily be changed.
 
-## Usage example:
-![describtion_usage](https://github.com/V-Sehra/Ultra_sound_annotation/assets/66560223/7a9134c1-eb17-4767-bdc0-120c07c9b529)
