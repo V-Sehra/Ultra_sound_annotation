@@ -12,7 +12,6 @@ Author: Vivek Sehra
 Initial Version: 21 June 2022
 """
 
-import os
 from pathlib import Path
 import pickle
 import base64
@@ -25,7 +24,7 @@ from flask import Flask, render_template, request, redirect, Response
 
 from utils.annotation_utils import stroc_editor
 from utils.video_utils import disp_frame, get_frame, check_form, check_dir
-from crop_single import crop_single, mask_sizer
+from utils.cropping_utils import crop_single, mask_sizer
 
 # Flask app setup
 app = Flask(__name__)

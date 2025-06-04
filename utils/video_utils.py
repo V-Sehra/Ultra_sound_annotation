@@ -4,7 +4,7 @@ import cv2
 from pathlib import Path
 
 # Allowed video file extensions
-ALLOWED_EXTENSIONS = {'avi'}
+ALLOWED_EXTENSIONS = {'.avi'}
 
 # Set current working directory
 cwd = Path.cwd()
@@ -92,8 +92,8 @@ def check_form(v_name: str, p_id: str, z: str, a: str) -> bool:
     """
     if not all([v_name, p_id, z, a]):
         return False
-
-    if '.' not in v_name or v_name.rsplit('.', 1)[1].lower() not in ALLOWED_EXTENSIONS:
+    print(v_name)
+    if Path(v_name).suffix.lower() not in ALLOWED_EXTENSIONS:
         return False
 
     return True
