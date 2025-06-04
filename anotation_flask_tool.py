@@ -1,163 +1,63 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Created on Tue Jun 21 19:39:03 2022
+Flask-based GUI application for video annotation with cropping and frame-level feedback.
+Primary use case: Processing and annotating microscopy or patient-derived video data.
 
-@author: Vivek
+Functionality:
+- Upload videos with patient and index metadata.
+- Allow user to select a preferred crop based on test crops.
+- Annotate frames using canvas-based feedback (strokes, flags).
+- Save annotations as a pickle file.
+
+Author: Vivek Sehra
+Initial Version: 21 June 2022
 """
 
 import os
-
-from flask import Flask, render_template, request, redirect, Response
-
-cwd = os.getcwd()
-import cv2
+from pathlib import Path
 import pickle
-from PIL import Image
 import base64
 import re
 import io
+
 import numpy as np
-from cropper import cropper
-from crop_single import crop_single
-from crop_single import mask_sizer
-import copy
+from PIL import Image
+from flask import Flask, render_template, request, redirect, Response
 
-ip = 'http://127.0.0.1:5000/'
+from utils.annotation_utils import stroc_editor
+from utils.video_utils import disp_frame, get_frame, check_form, check_dir
+from crop_single import crop_single, mask_sizer
 
-ALLOWED_EXTENSIONS = {'avi'}
-
-
-def get_frame(video_path):
-    f_list = []
-
-    cap = cv2.VideoCapture(video_path)
-
-    while True:
-
-        err, img = cap.read()
-        if err:
-
-            ret, buffer = cv2.imencode('.jpg', img)
-            f_list.append(buffer)
-
-        else:
-            break
-
-    return (f_list)
-
-
-def disp_frame(number, cop_test):
-    # show the current frame on the webapp
-    if cop_test:
-        disp = crop_test_frames[number].tobytes()
-    else:
-        disp = frame_list_read[number].tobytes()
-    yield (b'--frame\r\n'
-           b'Content-Type: image/jpeg\r\n\r\n' + disp + b'\r\n')
-
-
-def cancer_type(str_):
-    # switch between the different cancer anotations
-    switch = {
-        'hcc': 0,
-        'ccc': 1,
-        'era': 2,
-    }
-    return switch.get(str_)
-
-
-def stroc_editor(json_file):
-    # draw the previous markings
-
-    if json_file == '{"stroke":[]}':
-        return ([])
-    else:
-        fig_array = []
-        #collect the induvidual markings startx = first stroke
-        counts = [count_id for count_id in range(len(json_file)) if json_file[count_id:count_id + 6] == 'startx']
-
-        for fig_id in range(len(counts) - 1):
-            #what color was used?
-            c_type = cancer_type(json_file[counts[fig_id] - 6:counts[fig_id] - 3])
-            str_ = json_file[counts[fig_id]:counts[fig_id + 1]]
-            nums = [(int, re.findall(r'\d+', str_))[1]]
-            ob_vec = [[nums[0][i - 1], nums[0][i]] for i in range(1, len(nums[0]), 2)]
-            fig_array.append([c_type, ob_vec])
-
-        c_type = cancer_type(json_file[counts[-1] - 6:counts[-1] - 3])
-        str_ = json_file[counts[-1]:]
-        nums = [(int, re.findall(r'\d+', str_))[1]]
-        ob_vec = [[nums[0][i - 1], nums[0][i]] for i in range(1, len(nums[0]), 2)]
-        fig_array.append([c_type, ob_vec])
-
-        return (fig_array)
-
-
-def check_form(v_name, p_id, z, a):
-    if v_name is None or \
-            p_id is None or \
-            z is None or \
-            a is None:
-        return False
-
-    if not v_name.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS:
-        return False
-
-    return True
-
-
-def check_dir(p_id, z):
-    # create the directory where the files will be saved
-
-    if not os.path.exists(cwd + '/anotation/'):
-        os.mkdir(cwd + '/anotation/')
-
-    if not os.path.exists(cwd + '/anotation/' + str(p_id) + '/'):
-        os.mkdir(cwd + '/anotation/' + str(p_id) + '/')
-
-    if not os.path.exists(cwd + '/anotation/' + str(p_id) + '/' + str(p_id) + '_' + str(z) + '/'):
-        os.mkdir(cwd + '/anotation/' + str(p_id) + '/' + str(p_id) + '_' + str(z) + '/')
-
-    save_path = f"{cwd}/anotation/{p_id}/{p_id}_{z}/"
-    return (save_path)
-
-
-crop_folder = os.path.join('static', 'crop_templets')
-
+# Flask app setup
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = Path('static') / 'crop_templets'
 
-app.config['UPLOAD_FOLDER'] = crop_folder
-
+# Global state variables (minimal persistence for simplicity)
 filename = ""
 s_path = ''
 pat_id = ''
 index = ''
 prev_click = ""
-
 crop_test = True
-
-counter = 0
 crop_test_vid = ""
-
 crop_test_frames = []
 crop_test_counter = 0
 crop_mask = []
-
 canv_data = {}
 frame_list_read = []
 vid_file = ''
 body_bool = ""
 
-crop_img_bool = {}
+# Annotation state tracking
+counter = 0
 
 
 @app.route('/', methods=['GET', 'POST'])
 def upload_file():
-    global frame_list_read, s_path, pat_id, index, raw_frames, counter, canv_data, prev_click, vid_file, filename, body_bool
+    """Initial page to upload video and metadata."""
+    global frame_list_read, s_path, pat_id, index, counter, canv_data, prev_click, vid_file, filename, body_bool
 
     if request.method == 'GET':
-        return (render_template('start.html'))
+        return render_template('start.html')
 
     if request.method == 'POST':
         pat_id = request.form['p_id']
@@ -165,17 +65,15 @@ def upload_file():
         angle = request.form['angle']
         vid_file = request.files['vid_file']
         body_bool = 'pictograph' in request.form
-        print(body_bool)
 
         if not check_form(vid_file.filename, pat_id, index, angle):
             return redirect('/wrong_input')
 
         s_path = check_dir(pat_id, index)
-
-        filename = s_path + pat_id + '_' + index + '_raw.avi'
+        filename = str(s_path / f"{pat_id}_{index}_raw.avi")
 
         vid_file.save(filename)
-        with open(s_path + '/angle.pkl', 'wb') as f:
+        with open(s_path / 'angle.pkl', 'wb') as f:
             pickle.dump(angle, f)
 
         canv_data = {}
@@ -184,151 +82,113 @@ def upload_file():
 
         return redirect('/correct_crop')
 
-    return (render_template('done.html'))
-
 
 @app.route('/wrong_input', methods=['GET', 'POST'])
 def wrong_input():
-    if request.method == 'GET':
-        return (render_template('wrong_input.html'))
-
-    if request.method == 'POST':
-        pat_id = request.form['p_id']
-        index = request.form['index']
-        angle = request.form['angle']
-        vid_file = request.files['vid_file']
-
-        if not check_form(vid_file, pat_id, index, angle):
-            return redirect('/wrong_input')
-        else:
-            return redirect(ip)
+    """Display form again if invalid inputs are given."""
+    return render_template('wrong_input.html')
 
 
 @app.route('/collect_body_bool', methods=['POST'])
 def collect_body_bool():
-    # is the pictogram present?
+    """Handle pictograph upload if present."""
     global body_bool
-
     body_bool = request.files['pictograph']
-
     return ''
 
 
-@app.route('/correct_crop', methods=['GET', 'POST'])
+@app.route('/correct_crop', methods=['GET'])
 def correct_crop():
+    """Display test crops for user to select best one."""
     global s_path, pat_id, index, crop_test_vid, crop_test_frames, crop_test, crop_mask, filename, body_bool
-    #let the user choose which crop was well done
-    if request.method == 'GET':
-        s_path = check_dir(pat_id, index)
 
-        filename = s_path + pat_id + '_' + index + '_raw.avi'
+    s_path = check_dir(pat_id, index)
+    filename = str(s_path / f"{pat_id}_{index}_raw.avi")
 
-        crop_test = True
-
-        crop_test_vid, crop_mask = crop_single(filename, s_path, pat_id, index, body_bool)
-        crop_test_frames = get_frame(crop_test_vid)
-
-        return render_template('correct_crop.html')
-
-
-@app.route('/next_crop', methods=['GET', 'POST'])
-def next_crop():
-    global crop_test_counter
-    # switch between the different test crops
-    if crop_test_counter < len(crop_test_frames) - 1:
-        crop_test_counter = crop_test_counter + 1
-    else:
-        crop_test_counter = 0
+    crop_test = True
+    crop_test_vid, crop_mask = crop_single(filename, s_path, pat_id, index, body_bool)
+    crop_test_frames = get_frame(crop_test_vid)
 
     return render_template('correct_crop.html')
 
 
-@app.route('/crop_good', methods=['GET', 'POST'])
+@app.route('/next_crop', methods=['GET'])
+def next_crop():
+    """Cycle through available crop variants."""
+    global crop_test_counter
+    crop_test_counter = (crop_test_counter + 1) % len(crop_test_frames)
+    return render_template('correct_crop.html')
+
+
+@app.route('/crop_good', methods=['GET'])
 def good_grop():
+    """Apply selected crop settings to entire video and extract all frames."""
     global filename, s_path, pat_id, index, crop_test_counter, crop_test, frame_list_read, body_bool
-    # if the user chose one to be good select the cropping parameteres and apply them to all frames
+
     crop_test = False
-
     best_mask = crop_mask[crop_test_counter]
-    print(crop_mask[crop_test_counter])
-
     video_name = mask_sizer(filename, s_path, pat_id, index, best_mask, body_bool)
-
     frame_list_read = get_frame(video_name)
 
     return redirect('/annotator')
 
 
-@app.route('/annotator', methods=['GET', 'POST'])
+@app.route('/annotator', methods=['GET'])
 def anotator():
-    # render the annotation and corresponding frame
-    if 'raw_frame_' + str(counter) in canv_data.keys():
-
-        return render_template('anotator.html', Number=counter + 1,
-                               Totalframes=len(frame_list_read),
-                               prev_canv=canv_data['strokes_' + str(counter)],
-                               prev_ck=prev_click,
-                               prev_check_unsure=int(canv_data['unsure_' + str(counter)]),
-                               prev_check_bad_frame=canv_data['bad_frame_' + str(counter)])
-
-    elif (not 'raw_frame_' + str(counter) in canv_data.keys()) and counter != 0:
-
-        return render_template('anotator.html', Number=counter + 1,
-                               Totalframes=len(frame_list_read),
-                               prev_canv=canv_data['strokes_' + str(counter - 1)],
-                               prev_ck=prev_click,
-                               prev_check_unsure=0,
-                               prev_check_bad_frame=0)
-
-    elif len(canv_data) == 0:
-
-        return render_template('anotator.html', Number=counter + 1,
-                               Totalframes=len(frame_list_read),
-                               prev_canv=[],
-                               prev_ck=prev_click,
-                               prev_check_unsure=0,
-                               prev_check_bad_frame=0)
-
-
-@app.route('/get_prev_mark', methods=['GET', 'POST'])
-def get_prev_mark():
+    """Render annotator interface with prior annotations loaded if available."""
     global counter
-    # provide the markings done
-    if counter != 0:
-        canv_data['strokes_' + str(counter)] = canv_data['strokes_' + str(counter - 1)]
+    idx = counter
+    prev = idx - 1
 
+    if f'raw_frame_{idx}' in canv_data:
+        return render_template('anotator.html', Number=idx + 1, Totalframes=len(frame_list_read),
+                               prev_canv=canv_data.get(f'strokes_{idx}', []),
+                               prev_ck=prev_click,
+                               prev_check_unsure=int(canv_data.get(f'unsure_{idx}', 0)),
+                               prev_check_bad_frame=canv_data.get(f'bad_frame_{idx}', 0))
+    elif idx != 0:
+        return render_template('anotator.html', Number=idx + 1, Totalframes=len(frame_list_read),
+                               prev_canv=canv_data.get(f'strokes_{prev}', []),
+                               prev_ck=prev_click, prev_check_unsure=0, prev_check_bad_frame=0)
+    else:
+        return render_template('anotator.html', Number=1, Totalframes=len(frame_list_read),
+                               prev_canv=[], prev_ck=prev_click, prev_check_unsure=0, prev_check_bad_frame=0)
+
+
+@app.route('/get_prev_mark', methods=['GET'])
+def get_prev_mark():
+    """Carry forward previous marking if available."""
+    global counter
+    if counter > 0:
+        canv_data[f'strokes_{counter}'] = canv_data.get(f'strokes_{counter - 1}', [])
     return redirect('/annotator')
 
 
 @app.route('/frame')
 def frame():
+    """Video feed streaming endpoint."""
     global counter, crop_test_counter, crop_test
-
-    if crop_test:
-        return Response(disp_frame(crop_test_counter, crop_test), mimetype='multipart/x-mixed-replace; boundary=frame')
-    else:
-        return Response(disp_frame(counter, crop_test), mimetype='multipart/x-mixed-replace; boundary=frame')
+    idx = crop_test_counter if crop_test else counter
+    return Response(disp_frame(idx, crop_test, crop_test_frames, frame_list_read),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 @app.route('/can_im', methods=['POST'])
 def can_im():
-    global can_data, counter, prev_click
-    # collect all data presented on the canvas from the user
+    """Receive and process annotation canvas data from client."""
+    global canv_data, counter, prev_click
+
     image_b64 = request.values['imageBase64']
     image_data = re.sub('^data:image/.+;base64,', '', image_b64)
     image = base64.b64decode(image_data)
-
     image_np = np.array(Image.open(io.BytesIO(image)))
 
-    canv_data['img_' + str(counter)] = image_np
-
-    canv_data['raw_frame_' + str(counter)] = np.array(Image.open(io.BytesIO(frame_list_read[counter])))
-
-    canv_data['unsure_' + str(counter)] = request.values['un_sure']
-    canv_data['bad_frame_' + str(counter)] = request.values['bad_frame']
-    canv_data['raw_marking_' + str(counter)] = request.values['data']
-    canv_data['strokes_' + str(counter)] = stroc_editor(canv_data['raw_marking_' + str(counter)])
-
+    canv_data[f'img_{counter}'] = image_np
+    canv_data[f'raw_frame_{counter}'] = np.array(Image.open(io.BytesIO(frame_list_read[counter])))
+    canv_data[f'unsure_{counter}'] = request.values['un_sure']
+    canv_data[f'bad_frame_{counter}'] = request.values['bad_frame']
+    canv_data[f'raw_marking_{counter}'] = request.values['data']
+    canv_data[f'strokes_{counter}'] = stroc_editor(request.values['data'])
     prev_click = request.values['prev_ck']
 
     return ''
@@ -336,42 +196,38 @@ def can_im():
 
 @app.route('/next_frame')
 def next_frame():
+    """Go to the next frame in sequence."""
     global counter
-    if counter < len(frame_list_read) - 1:
-        counter = counter + 1
-
+    counter = min(counter + 1, len(frame_list_read) - 1)
     return redirect('/annotator')
 
 
 @app.route('/prev_frame')
 def prev_frame():
+    """Return to the previous frame."""
     global counter
-
-    if counter > 0:
-        counter = counter - 1
-
-    else:
-        counter = 0
+    counter = max(counter - 1, 0)
     return redirect('/annotator')
 
 
 @app.route('/save_and_exit')
 def save_and_exit():
+    """Save annotations and exit workflow."""
     global counter, canv_data, frame_list_read, s_path, pat_id
-    # go through all the not annotated frames left and save them 
+
+    # Fill in skipped annotations
     for idx in range(counter + 1, len(frame_list_read)):
-        canv_data['img_' + str(idx)] = np.zeros((720, 896, 4))
+        canv_data[f'img_{idx}'] = np.zeros((720, 896, 4))
+        canv_data[f'raw_frame_{idx}'] = np.array(Image.open(io.BytesIO(frame_list_read[idx])))
+        canv_data[f'raw_marking_{idx}'] = None
+        canv_data[f'unsure_{idx}'] = 0
+        canv_data[f'bad_frame_{idx}'] = 0
 
-        canv_data['raw_frame_' + str(idx)] = np.array(Image.open(io.BytesIO(frame_list_read[idx])))
-        canv_data['raw_marking_' + str(idx)] = None
-        canv_data['unsure_' + str(idx)] = 0
-        canv_data['bad_frame_' + str(idx)] = 0
-
-    with open(s_path + pat_id + '_' + str(index) + '_anotations.pkl', 'wb') as f:
+    with open(s_path / f"{pat_id}_{index}_anotations.pkl", 'wb') as f:
         pickle.dump(canv_data, f)
 
-    return redirect(ip)
+    return redirect('/')
 
 
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=False)
